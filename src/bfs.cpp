@@ -3,6 +3,7 @@
 #include <omp.h>
 #include <chrono>
 #include <iostream>
+#include <string>
 #include "../include/graph.h"
 
 std::vector<int> serial_bfs(const std::vector<Node> &node_list, const std::vector<Edge> &edge_list, unsigned int source_node_no)
@@ -40,7 +41,8 @@ std::vector<int> serial_bfs(const std::vector<Node> &node_list, const std::vecto
     return cost;
 }
 
-std::vector<int> parallel_bfs(const std::vector<Node> &node_list, const std::vector<Edge> &edge_list, unsigned int source_node_no, int num_threads)
+std::vector<int> parallel_bfs(const std::vector<Node> &node_list, const std::vector<Edge> &edge_list,
+                              unsigned int source_node_no, int num_threads, const std::string &schedule_type, int chunk_size)
 {
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -59,31 +61,92 @@ std::vector<int> parallel_bfs(const std::vector<Node> &node_list, const std::vec
     {
         int num_nodes = current.size();
 
-#pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < num_nodes; i++)
+        if (schedule_type == "static")
         {
-            unsigned int index;
+#pragma omp parallel for schedule(static, chunk_size)
+            for (int i = 0; i < num_nodes; i++)
+            {
+                unsigned int index;
 #pragma omp critical
-            {
-                index = current.front();
-                current.pop_front();
-            }
-
-            Node cur_node = node_list[index];
-            std::vector<unsigned int> local_next;
-
-            for (unsigned int j = cur_node.start; j < cur_node.start + cur_node.edge_num; j++)
-            {
-                unsigned int id = edge_list[j].dest;
-                if (!visited[id].load() && !visited[id].exchange(true))
                 {
-                    cost[id] = cost[index] + 1;
-                    local_next.push_back(id);
+                    index = current.front();
+                    current.pop_front();
                 }
-            }
+
+                Node cur_node = node_list[index];
+                std::vector<unsigned int> local_next;
+
+                for (unsigned int j = cur_node.start; j < cur_node.start + cur_node.edge_num; j++)
+                {
+                    unsigned int id = edge_list[j].dest;
+                    if (!visited[id].load() && !visited[id].exchange(true))
+                    {
+                        cost[id] = cost[index] + 1;
+                        local_next.push_back(id);
+                    }
+                }
 
 #pragma omp critical
-            next.insert(next.end(), local_next.begin(), local_next.end());
+                next.insert(next.end(), local_next.begin(), local_next.end());
+            }
+        }
+        else if (schedule_type == "dynamic")
+        {
+#pragma omp parallel for schedule(dynamic, chunk_size)
+            for (int i = 0; i < num_nodes; i++)
+            {
+                unsigned int index;
+#pragma omp critical
+                {
+                    index = current.front();
+                    current.pop_front();
+                }
+
+                Node cur_node = node_list[index];
+                std::vector<unsigned int> local_next;
+
+                for (unsigned int j = cur_node.start; j < cur_node.start + cur_node.edge_num; j++)
+                {
+                    unsigned int id = edge_list[j].dest;
+                    if (!visited[id].load() && !visited[id].exchange(true))
+                    {
+                        cost[id] = cost[index] + 1;
+                        local_next.push_back(id);
+                    }
+                }
+
+#pragma omp critical
+                next.insert(next.end(), local_next.begin(), local_next.end());
+            }
+        }
+        else if (schedule_type == "guided")
+        {
+#pragma omp parallel for schedule(guided, chunk_size)
+            for (int i = 0; i < num_nodes; i++)
+            {
+                unsigned int index;
+#pragma omp critical
+                {
+                    index = current.front();
+                    current.pop_front();
+                }
+
+                Node cur_node = node_list[index];
+                std::vector<unsigned int> local_next;
+
+                for (unsigned int j = cur_node.start; j < cur_node.start + cur_node.edge_num; j++)
+                {
+                    unsigned int id = edge_list[j].dest;
+                    if (!visited[id].load() && !visited[id].exchange(true))
+                    {
+                        cost[id] = cost[index] + 1;
+                        local_next.push_back(id);
+                    }
+                }
+
+#pragma omp critical
+                next.insert(next.end(), local_next.begin(), local_next.end());
+            }
         }
 
         current.swap(next);

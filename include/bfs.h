@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <atomic>
+#include <string>
 #include "graph.h"
 
 class AtomicBoolWrapper
@@ -22,5 +23,11 @@ public:
     bool exchange(bool desired) { return value.exchange(desired); }
 };
 std::vector<int> serial_bfs(const std::vector<Node> &node_list, const std::vector<Edge> &edge_list, unsigned int source_node_no);
-std::vector<int> parallel_bfs(const std::vector<Node> &node_list, const std::vector<Edge> &edge_list, unsigned int source_node_no, int num_threads);
+std::vector<int> parallel_bfs(const std::vector<Node> &node_list,
+                              const std::vector<Edge> &edge_list,
+                              unsigned int source_node_no,
+                              int num_threads,
+                              const std::string &schedule_type,
+                              int chunk_size);
+
 #endif // BFS_H
